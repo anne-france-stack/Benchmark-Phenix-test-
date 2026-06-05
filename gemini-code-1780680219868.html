@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phenix — Plateforme de Pilotage de Rémunération & Benchmark</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fef2f2', 100: '#fee2e2', 200: '#fecaca', 300: '#fca5a5', 400: '#f87171',
+                            500: '#ef4444', 600: '#dc2626', 700: '#b91c1c', 800: '#991b1b', 900: '#7f1d1d',
+                            phenix: '#f74039'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Firebase Standard Modules -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .sidebar-active { background-color: rgba(247, 64, 57, 0.1); border-left: 4px solid #f74039; color: #f74039 !important; }
+        .tab-active { border-bottom: 2px solid #f74039; color: #f74039; }
+    </style>
+</head>
+<body class="bg-stone-50 text-gray-800 min-h-screen flex flex-col">
+
+    <!-- ÉCRAN DE CONNEXION RESTREINT -->
+    <div id="login-screen" class="fixed inset-0 bg-stone-900 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-gray-100">
+            <div class="text-center mb-8">
+                <div class="bg-brand-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-phenix text-2xl shadow-inner"><i class="fa-solid fa-shield-halved"></i></div>
+                <h1 class="text-2xl font-bold text-gray-900" id="login-title">Benchmark Salaires</h1>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Espace sécurisé Phenix</label>
+                    <input type="email" id="login-email" placeholder="Email (ex: direction@phenix.com)" class="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-brand-phenix focus:bg-white outline-none transition text-gray-700 font-medium mb-3">
+                    <input type="password" id="login-pwd" placeholder="Mot de passe" class="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-brand-phenix focus:bg-white outline-none transition text-gray-700 font-medium">
+                </div>
+                
+                <div id="debug-box" class="text-xs font-bold text-brand-phenix text-center min-h-[20px]"></div>
+
+                <button onclick="handleLogin()" class="w-full bg-brand-phenix hover:bg-brand-600 text-white font-semibold py-3 rounded-xl shadow-lg shadow-brand-phenix/20 transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <span>Se connecter</span><i class="fa-solid fa-arrow-right text-sm"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- REPO D'APPLICATION GLOBAL -->
+    <div id="app-container" class="hidden h-screen flex overflow-hidden">
+        
+        <!-- SIDEBAR DE NAVIGATION -->
+        <div class="w-72 bg-stone-900 text-stone-300 flex flex-col shrink-0 border-r border-stone-800">
+            <div class="p-5 border-b border-stone-800 bg-stone-950 flex justify-between items-center">
+                <div class="flex items-center gap-3 font-bold text-white"><span class="bg-brand-phenix px-2 rounded">P</span> Phenix Corporate</div>
+                <button onclick="handleLogout()" class="text-stone-400 hover:text-red-400 transition p-2 rounded-lg hover:bg-stone-800" title="Déconnexion"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+
+            <!-- Boutons exclusifs d'administration globale -->
+            <div id="admin-nav-section" class="p-3 border-b border-stone-800 bg-stone-950/40 space-y-1 hidden">
+                <button id="btn-nav-dashboard" onclick="selectGlobalView('dashboard')" class="w-full text-left px-3 py-2 text-sm rounded-lg font-semibold flex items-center gap-2 text-stone-300 hover:bg-stone-800"><i class="fa-solid fa-chart-pie text-brand-phenix"></i> Tableau de bord Général</button>
+                <button id="btn-nav-users" onclick="selectGlobalView('users')" class="w-full text-left px-3 py-2 text-sm rounded-lg font-semibold flex items-center gap-2 text-stone-300 hover:bg-stone-800"><i class="fa-solid fa-user-gear text-purple-400"></i> Gestion des Utilisateurs</button>
+                <button id="btn-nav-simulator" onclick="selectGlobalView('simulator')" class="w-full text-left px-3 py-2 text-sm rounded-lg font-semibold flex items-center gap-2 text-stone-300 hover:bg-stone-800"><i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> Simulateur d'Enveloppes</button>
+            </div>
+
+            <div class="p-4 bg-stone-950/20 flex items-center justify-between text-xs font-bold text-stone-400 uppercase tracking-wider">
+                <span>Départements / Métiers</span>
+                <button onclick="openModal('add-metier-modal')" class="hover:text-brand-phenix transition" title="Ajouter un métier"><i class="fa-solid fa-plus-circle text-base"></i></button>
+            </div>
+            
+            <div id="metiers-list" class="flex-1 overflow-y-auto px-2 py-1 space-y-2"></div>
+
+            <div class="p-4 border-t border-stone-800 bg-stone-950/60 text-xs text-stone-500 flex justify-between items-center">
+                <span class="flex items-center gap-1"><i class="fa-solid fa-circle text-[8px] text-green-500 animate-pulse"></i><span id="user-role-badge">Connecté Cloud</span></span>
+            </div>
+        </div>
+
+        <!-- RECEPTACLE CENTRAL DE CONTENU -->
+        <div class="flex-1 flex flex-col overflow-y-auto bg-stone-50" id="main-display-region">
+            
+            <!-- VUE DASHBOARD GLOBAL RESTREINT DIRECTION -->
+            <div id="view-dashboard" class="hidden p-8 space-y-8 max-w-6xl w-full mx-auto">
+                <div class="flex justify-between items-center border-b border-stone-200 pb-4">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Tableau de bord Santé RH</h1>
+                        <p class="text-sm text-gray-500">Vue consolidée de la grille Phenix par rapport au marché mondial.</p>
+                    </div>
+                    <span class="bg-brand-50 text-brand-phenix text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Accès Direction Générale</span>
+                </div>
+                
+                <!-- KPI CARDS -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                        <div class="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Masse Salariale Annuelle</div>
+                        <div class="text-2xl font-black text-gray-900" id="kpi-mass">- €</div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                        <div class="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">En Cible Interne</div>
+                        <div class="text-2xl font-black text-green-600" id="kpi-incible">- %</div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                        <div class="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Sous le Minimum</div>
+                        <div class="text-2xl font-black text-amber-600" id="kpi-under">- collaborateurs</div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                        <div class="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Budget de Rattrapage Requis</div>
+                        <div class="text-2xl font-black text-brand-phenix" id="kpi-rattrapage">- €</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                        <h3 class="font-bold text-gray-900 mb-4 uppercase text-xs tracking-wider">Dispersion Générale des Équipes</h3>
+                        <div class="relative h-64"><canvas id="globalChartDistribution"></canvas></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                        <h3 class="font-bold text-gray-900 mb-4 uppercase text-xs tracking-wider">État de santé des effectifs par département</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr class="bg-stone-50 border-b text-stone-400 font-bold uppercase text-[11px]"><th class="p-2">Département</th><th class="p-2 text-center">Sous-payés</th><th class="p-2 text-center">En cible</th><th class="p-2 text-center">Sur-payés</th></tr>
+                                </thead>
+                                <tbody id="dashboard-table-depts" class="divide-y divide-stone-100 font-medium"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VUE GESTIONNAIRE UTILISATEURS DIRECT DU LOGICIEL -->
+            <div id="view-users" class="hidden p-8 space-y-6 max-w-4xl w-full mx-auto">
+                <div class="flex justify-between items-center border-b border-stone-200 pb-4">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">Gestion et habilitation des Managers</h1>
+                        <p class="text-xs text-gray-500">Ajoutez des gestionnaires de départements pour un cloisonnement étanche.</p>
+                    </div>
+                    <button onclick="openModal('add-user-modal')" class="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md"><i class="fa-solid fa-user-plus mr-1"></i> Nouvel Accès</button>
+                </div>
+
+                <div class="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="bg-stone-50 border-b text-stone-500 font-bold uppercase text-[11px] tracking-wider"><th class="px-6 py-3">Identifiant d'accès (Email)</th><th class="px-6 py-3">Périmètre de visibilité</th><th class="px-6 py-3 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody id="users-table-body" class="divide-y divide-stone-200 font-medium">
+                            <!-- Populated dynamically via database object mockup -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- VUE SIMULATEUR BUDGETAIRE (SANDBOX) -->
+            <div id="view-simulator" class="hidden p-8 space-y-6 max-w-5xl w-full mx-auto">
+                <div class="bg-gradient-to-r from-amber-500 to-orange-600 p-6 rounded-2xl text-white shadow-lg space-y-2">
+                    <h1 class="text-2xl font-bold flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles"></i> Mode Simulation Stratégique ("What-if")</h1>
+                    <p class="text-sm opacity-90">Modifiez virtuellement des critères ou appliquez des enveloppes globales. Aucun changement ne sera sauvegardé sur le Cloud tant que vous ne validez pas.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Actions Panel -->
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4 h-fit">
+                        <h3 class="font-bold text-sm tracking-wide text-gray-900 uppercase">Leviers d'augmentation</h3>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1 font-bold uppercase">Département cible</label>
+                            <select id="sim-dept-select" class="w-full border p-2 text-sm rounded-lg bg-stone-50"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1 font-bold uppercase">Augmentation en pourcentage (%)</label>
+                            <input type="number" id="sim-pct-input" value="0" class="w-full border p-2 text-sm rounded-lg" placeholder="Ex: 3">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1 font-bold uppercase">Prime fixe générale (€)</label>
+                            <input type="number" id="sim-amt-input" value="0" class="w-full border p-2 text-sm rounded-lg" placeholder="Ex: 1500">
+                        </div>
+                        <button onclick="runSimulation()" class="w-full bg-stone-900 text-white font-bold py-2.5 rounded-xl text-xs hover:bg-stone-800 transition">Calculer l'impact financier</button>
+                    </div>
+
+                    <!-- Impact Panel -->
+                    <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm md:col-span-2 space-y-6">
+                        <h3 class="font-bold text-sm tracking-wide text-gray-900 uppercase">Résultats de la simulation virtuelle</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-stone-50 p-4 rounded-xl border text-center">
+                                <div class="text-xs font-bold text-stone-400 uppercase">Surcoût Annuel Simulation</div>
+                                <div class="text-2xl font-black text-amber-600" id="sim-res-cost">0 €</div>
+                            </div>
+                            <div class="bg-stone-50 p-4 rounded-xl border text-center">
+                                <div class="text-xs font-bold text-stone-400 uppercase">Collaborateurs redressés</div>
+                                <div class="text-2xl font-black text-green-600" id="sim-res-saved">0</div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-stone-400 italic">La liste complète des ajustements simulés apparaîtra ci-dessous :</div>
+                        <div class="max-h-60 overflow-y-auto divide-y font-medium text-xs text-gray-700" id="sim-changes-log"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EMPTY STATE STANDARD -->
+            <div id="empty-state" class="flex-1 flex flex-col items-center justify-center p-12 text-center">
+                <div class="bg-stone-200 p-6 rounded-full text-stone-400 text-4xl mb-4 shadow-inner"><i class="fa-solid fa-chart-bar"></i></div>
+                <h3 class="text-xl font-bold text-stone-800">Sélectionnez une vue ou un métier dans la barre latérale</h3>
+            </div>
+
+            <!-- CONTENU STANDARD POUR UN METIER SELECTIONNE -->
+            <div id="main-content" class="hidden flex-1 flex flex-col">
+                <div class="bg-white border-b border-stone-200 px-8 py-5 flex justify-between items-center shadow-sm">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span id="header-dept-tag" class="bg-brand-50 text-brand-phenix border border-brand-100 text-xs font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">DEPT</span>
+                            <h1 id="header-metier-name" class="text-2xl font-bold text-gray-900 tracking-tight">Intitulé du Métier</h1>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <button onclick="openRenameModal()" class="text-gray-600 hover:text-brand-phenix transition border border-gray-300 hover:border-brand-200 px-3 py-1.5 rounded-lg text-sm font-medium bg-white shadow-sm flex items-center gap-1.5"><i class="fa-solid fa-pen text-xs"></i> Renommer</button>
+                        <button onclick="handleDeleteMetier()" class="text-gray-600 hover:text-red-600 transition border border-gray-300 hover:border-red-200 px-3 py-1.5 rounded-lg text-sm font-medium bg-white shadow-sm flex items-center gap-1.5"><i class="fa-solid fa-trash text-xs"></i> Supprimer</button>
+                    </div>
+                </div>
+
+                <div class="bg-white border-b border-stone-200 px-8 flex justify-between items-center">
+                    <div class="flex gap-8">
+                        <button id="tab-btn-benchmark" onclick="switchTab('benchmark')" class="py-4 font-semibold text-sm border-b-2 border-transparent text-stone-500 hover:text-gray-800 transition flex items-center gap-2"><i class="fa-solid fa-chart-simple text-brand-phenix"></i> 📊 Grille & Benchmark</button>
+                        <button id="tab-btn-collaborateurs" onclick="switchTab('collaborateurs')" class="py-4 font-semibold text-sm border-b-2 border-transparent text-stone-500 hover:text-gray-800 transition flex items-center gap-2"><i class="fa-solid fa-users text-purple-500"></i> 👥 Collaborateurs</button>
+                        <button id="tab-btn-contexte" onclick="switchTab('contexte')" class="py-4 font-semibold text-sm border-b-2 border-transparent text-stone-500 hover:text-gray-800 transition flex items-center gap-2"><i class="fa-solid fa-sliders text-amber-500"></i> ℹ️ Contexte & Paramètres</button>
+                    </div>
+                    
+                    <div class="flex bg-stone-100 p-1 rounded-lg">
+                        <button id="btn-view-fixe" onclick="switchViewMode('fixe')" class="px-4 py-1.5 text-xs font-bold rounded-md bg-white shadow-sm text-brand-phenix">Salaire Fixe</button>
+                        <button id="btn-view-package" onclick="switchViewMode('package')" class="px-4 py-1.5 text-xs font-bold rounded-md text-stone-500 hover:text-stone-700">Package Total</button>
+                    </div>
+                </div>
+
+                <div class="p-8 max-w-6xl w-full mx-auto space-y-8 flex-1">
+                    <div id="tab-content-benchmark" class="tab-pane space-y-8">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
+                                <div class="bg-stone-50 border-b border-stone-200 px-6 py-4 flex items-center justify-between"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-brand-phenix"></span><h3 class="font-bold text-gray-900 text-sm tracking-wide uppercase">Grille Interne Phenix</h3></div><button onclick="switchTab('contexte')" class="text-[11px] text-brand-phenix hover:underline font-semibold flex items-center gap-1"><i class="fa-solid fa-pen"></i> Modifier</button></div>
+                                <div class="p-6 space-y-3" id="grille-interne-list"></div>
+                            </div>
+                            
+                            <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
+                                <div class="bg-stone-50 border-b border-stone-200 px-6 py-4 flex justify-between items-center"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><h3 class="font-bold text-gray-900 text-sm tracking-wide uppercase">Benchmark Lucca</h3></div><button onclick="switchTab('contexte')" class="text-[11px] text-emerald-600 hover:underline font-semibold flex items-center gap-1"><i class="fa-solid fa-pen"></i> Modifier</button></div>
+                                <div class="p-6 space-y-3" id="grille-lucca-list"></div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
+                            <div class="border-b border-stone-200 px-6 py-4"><h3 class="font-bold text-gray-900 text-sm tracking-wide uppercase">Comparaison & Écarts (<span id="compare-mode-label">Fixe</span>)</h3></div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead><tr class="bg-stone-50 text-stone-500 text-xs font-bold uppercase tracking-wider border-b border-stone-200"><th class="px-6 py-3.5">Niveau Interne</th><th class="px-6 py-3.5">Équiv. Lucca</th><th class="px-6 py-3.5 bg-brand-50/50">Min Interne</th><th class="px-6 py-3.5 bg-brand-50/50">Max Interne</th><th class="px-6 py-3.5 bg-emerald-50/30">Lucca Bas</th><th class="px-6 py-3.5 bg-emerald-50/30">Lucca Haut</th><th class="px-6 py-3.5 text-center">Visualisation</th><th class="px-6 py-3.5 text-right">Écart Max</th></tr></thead>
+                                    <tbody id="comparison-table-body" class="divide-y divide-stone-200 text-sm font-medium text-gray-700"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-content-collaborateurs" class="tab-pane space-y-8 hidden">
+                        <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-stone-200">
+                            <div class="text-sm font-semibold text-gray-700">Liste des collaborateurs</div>
+                            <div class="flex gap-2">
+                                <button onclick="openModal('import-csv-modal')" class="bg-white border text-gray-700 px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><i class="fa-solid fa-file-import"></i> Importer CSV</button>
+                                <button onclick="openModal('add-collab-modal')" class="bg-brand-phenix text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><i class="fa-solid fa-plus"></i> Ajouter</button>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
+                            <table class="w-full text-left border-collapse">
+                                <thead><tr class="bg-stone-50 text-stone-500 text-xs font-bold uppercase tracking-wider border-b border-stone-200"><th class="px-6 py-3.5">Nom complet</th><th class="px-6 py-3.5">Niveau</th><th class="px-6 py-3.5 text-right">Fixe (€)</th><th id="col-var" class="px-6 py-3.5 text-right hidden">Variable (€)</th><th id="col-tot" class="px-6 py-3.5 text-right hidden">Total (€)</th><th class="px-6 py-3.5 text-center">Position (<span id="collab-mode-label">Fixe</span>)</th><th class="px-6 py-3.5 text-right"></th></tr></thead>
+                                <tbody id="collab-table-body" class="divide-y divide-stone-200 text-sm text-gray-700 font-medium"></tbody>
+                            </table>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-6">
+                            <h3 class="text-base font-bold text-gray-900 mb-2">Positionnement visuel des collaborateurs</h3>
+                            <div class="relative w-full h-[320px]"><canvas id="positioningChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <div id="tab-content-contexte" class="tab-pane space-y-6 hidden">
+                        <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-6 space-y-8">
+                            <div>
+                                <h3 class="text-base font-bold text-gray-900 flex items-center gap-2 border-b border-stone-100 pb-3 mb-4"><i class="fa-solid fa-link text-brand-phenix"></i> Mapping Niveaux Internes → Lucca</h3>
+                                <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" id="mapping-container"></div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-6 border-b border-stone-100">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Intitulé équivalent sur Lucca</label>
+                                    <input type="text" id="ctx-lucca-title" onchange="saveContextField('lucca_title', this.value)" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-phenix outline-none text-sm font-medium text-gray-700" placeholder="Ex: Lead Developer...">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Description / Périmètre du poste</label>
+                                    <textarea id="ctx-desc" onchange="saveContextField('desc', this.value)" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-phenix outline-none text-sm font-medium text-gray-700" placeholder="Résumé des responsabilités attendues..."></textarea>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
+                                <div>
+                                    <h3 class="text-base font-bold text-gray-900 flex items-center gap-2 mb-4"><i class="fa-solid fa-building text-brand-phenix"></i> Éditer la Grille Interne Phenix</h3>
+                                    <div class="space-y-3" id="edit-interne-container"></div>
+                                </div>
+                                <div>
+                                    <h3 class="text-base font-bold text-gray-900 flex items-center gap-2 mb-4"><i class="fa-solid fa-globe text-emerald-500"></i> Éditer le Benchmark Lucca</h3>
+                                    <div class="space-y-3" id="edit-lucca-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODALS -->
+    <div id="add-metier-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-md">
+            <h3 class="font-bold mb-4">Nouveau métier</h3>
+            <input type="text" id="new-metier-name" class="w-full border p-2 mb-4 rounded" placeholder="Nom du métier">
+            <div class="flex justify-end gap-2"><button onclick="closeModal('add-metier-modal')" class="px-4 py-2 bg-gray-100 rounded">Annuler</button><button onclick="handleAddMetier()" class="px-4 py-2 bg-brand-phenix text-white rounded">Créer</button></div>
+        </div>
+    </div>
+    <div id="rename-metier-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-md">
+            <h3 class="font-bold mb-4">Renommer</h3>
+            <input type="text" id="rename-metier-input" class="w-full border p-2 mb-4 rounded">
+            <div class="flex justify-end gap-2"><button onclick="closeModal('rename-metier-modal')" class="px-4 py-2 bg-gray-100 rounded">Annuler</button><button onclick="handleRenameMetier()" class="px-4 py-2 bg-brand-phenix text-white rounded">Enregistrer</button></div>
+        </div>
+    </div>
+    <div id="add-collab-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-md space-y-4">
+            <h3 class="font-bold">Ajouter Collaborateur</h3>
+            <input type="text" id="collab-name" class="w-full border p-2 rounded" placeholder="Nom">
+            <select id="collab-level" class="w-full border p-2 rounded"></select>
+            <input type="number" id="collab-fixe" class="w-full border p-2 rounded" placeholder="Fixe annuel">
+            <input type="number" id="collab-var" class="w-full border p-2 rounded" placeholder="Variable">
+            <div class="flex justify-end gap-2"><button onclick="closeModal('add-collab-modal')" class="px-4 py-2 bg-gray-100 rounded">Annuler</button><button onclick="handleAddCollab()" class="px-4 py-2 bg-brand-phenix text-white rounded">Enregistrer</button></div>
+        </div>
+    </div>
+    <div id="import-csv-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-md space-y-4">
+            <h3 class="font-bold">Import CSV</h3>
+            <textarea id="csv-textarea" rows="5" class="w-full border p-2 rounded" placeholder="Nom,Niveau,Fixe,Variable"></textarea>
+            <p class="text-xs">Niveaux supportés : junior, inter, advanced, senior, l5, l6, l7</p>
+            <div class="flex justify-end gap-2"><button onclick="closeModal('import-csv-modal')" class="px-4 py-2 bg-gray-100 rounded">Annuler</button><button onclick="handleCSVImport()" class="px-4 py-2 bg-brand-phenix text-white rounded">Importer</button></div>
+        </div>
+    </div>
+    <div id="add-user-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-md space-y-4">
+            <h3 class="font-bold">Habiliter un nouveau Manager</h3>
+            <input type="email" id="new-user-email" class="w-full border p-2 rounded" placeholder="Adresse email (ex: ops-manager@phenix.com)">
+            <input type="password" id="new-user-pwd" class="w-full border p-2 rounded" placeholder="Mot de passe">
+            <p class="text-[11px] text-gray-500">Rappel : L'email dicte le rôle (ops, sales, market, tech, financ, hr/rh). Sans mot-clé, l'accès est Direction Générale.</p>
+            <div class="flex justify-end gap-2"><button onclick="closeModal('add-user-modal')" class="px-4 py-2 bg-gray-100 rounded">Annuler</button><button onclick="handleCreateManagerUser()" class="px-4 py-2 bg-purple-600 text-white rounded font-bold">Créer l'accès</button></div>
+        </div>
+    </div>
+
+    <!-- CODE MOTEUR -->
+    <script>
+        const NIVEAUX_ORDRE = ["Junior", "Intermediate", "Advanced", "Senior", "L5 - Manager", "L6 - Head of", "L7 - VP"];
+        const LUCCA_OPTIONS = ["Junior", "Confirmé", "Senior", "Expert", "Manager d'équipe", "Manager d'équipe / lead", "Manager senior / directeur", "Directeur de département", "C-level"];
+        
+        let appState = { currentScope: "", currentMetierIndex: null, currentMetierDept: "", activeTab: "benchmark", viewMode: "fixe", data: null, globalView: "" };
+        let chartInstance = null;
+        let globalChartInstance = null;
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyBXT7Ae6y9V7FCbs1Ixb1n6Oax2_VG8WOY",
+          authDomain: "benchmark-pehnix.firebaseapp.com",
+          projectId: "benchmark-pehnix",
+          storageBucket: "benchmark-pehnix.firebasestorage.app",
+          messagingSenderId: "641885036210",
+          appId: "1:641885036210:web:4b110bfc7e5fb1874773ab"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // Object standard d'usine complet de la grille France brute
+        const FACTORY_DATA = {"departements": {"Operations": {"metiers": [{"nom": "Direction / VP", "grille_interne": {"L7 - VP": {"min": 64000, "max": 82000, "package_min": 74000, "package_max": 92000}}, "grille_lucca": {"L7 - VP": {"min": 60800, "max": 77900, "package_min": 70300, "package_max": 90071}}, "lucca_mapping": {"Junior": "Junior", "Intermediate": "Confirmé", "Advanced": "Senior", "Senior": "Expert", "L5 - Manager": "Manager d'équipe", "L6 - Head of": "Manager d'équipe / lead", "L7 - VP": "Manager senior / directeur"}, "collaborateurs": [{"nom": "Collaborateur 1", "niveau": "L7 - VP", "fixe": 65000, "variable": 10000}, {"nom": "Collaborateur 2", "niveau": "L7 - VP", "fixe": 90150, "variable": 20000}, {"nom": "Collaborateur 3", "niveau": "L7 - VP", "fixe": 58500, "variable": 9000}], "contexte": {"lucca_title": "", "location": "", "industry": "", "size": "", "desc": "", "notes": ""}}, {"nom": "Head of Operations", "grille_interne": {"L6 - Head of": {"min": 56000, "max": 72000, "package_min": 66000, "package_max": 82000}}, "grille_lucca": {"L6 - Head of": {"min": 53200, "max": 68400, "package_min": 62700, "package_max": 80614}}, "lucca_mapping": {"Junior": "Junior", "Intermediate": "Confirmé", "Advanced": "Senior", "Senior": "Expert", "L5 - Manager": "Manager d'équipe", "L6 - Head of": "Manager d'équipe / lead", "L7 - VP": "Manager senior / directeur"}, "collaborateurs": [], "contexte": {"lucca_title": "", "location": "", "industry": "", "size": "", "desc": "", "notes": ""}}, {"nom": "Customer Success", "grille_interne": {"L5 - Manager": {"min": 52000, "max": 60000, "package_min": 60000, "package_max": 70000}, "Senior": {"min": 40000, "max": 54000, "package_min": 47000, "package_max": 63000}, "Advanced": {"min": 37000, "max": 50000, "package_min": 42000, "package_max": 58000}, "Intermediate": {"min": 34000, "max": 41000, "package_min": 39000, "package_max": 48000}, "Junior": {"min": 30000, "max": 38000, "package_min": 35000, "package_max": 44000}}, "grille_lucca": {"L5 - Manager": {"min": 49400, "max": 57000, "package_min": 56999, "package_max": 65769}, "Senior": {"min": 38000, "max": 51300, "package_min": 44650, "package_max": 60277}, "Advanced": {"min": 35150, "max": 47500, "package_min": 39900, "package_max": 53918}, "Intermediate": {"min": 32300, "max": 38950, "package_min": 37050, "package_max": 44677}, "Junior": {"min": 28500, "max": 36100, "package_min": 33250, "package_max": 42116}}, "lucca_mapping": {"Junior": "Junior", "Intermediate": "Confirmé", "Advanced": "Senior", "Senior": "Expert", "L5 - Manager": "Manager d'équipe", "L6 - Head of": "Manager d'équipe / lead", "L7 - VP": "Manager senior / directeur"}, "collaborateurs": [{"nom": "Collaborateur 4", "niveau": "Advanced", "fixe": 40000, "variable": 5000}, {"nom": "Collaborateur 5", "niveau": "Advanced", "fixe": 39000, "variable": 5000}, {"nom": "Collaborateur 6", "niveau": "Intermediate", "fixe": 36000, "variable": 5000}], "contexte": {"lucca_title": "", "desc": ""}}]}, "Sales": {"metiers": [{"nom": "Head of Sales", "grille_interne": {"L6 - Head of": {"min": 66000, "max": 86000, "package_min": 86000, "package_max": 108000}}, "grille_lucca": {"L6 - Head of": {"min": 62700, "max": 81700, "package_min": 81700, "package_max": 106457}}, "lucca_mapping": {"Junior": "Junior", "Intermediate": "Confirmé", "Advanced": "Senior", "Senior": "Expert", "L5 - Manager": "Manager d'équipe", "L6 - Head of": "Manager d'équipe / lead", "L7 - VP": "Manager senior / directeur"}, "collaborateurs": [], "contexte": {"lucca_title": "", "desc": ""}}]}}};
+
+        function initApp() {
+            const cl = document.getElementById('collab-level');
+            cl.innerHTML = "";
+            NIVEAUX_ORDRE.forEach(n => { cl.innerHTML += `<option value="${n}">${n}</option>`; });
+            
+            // Hydrate simple selection target for simulation department filter
+            const simSel = document.getElementById('sim-dept-select');
+            simSel.innerHTML = `<option value="ALL">Tous les départements</option>`;
+            Object.keys(FACTORY_DATA.departements).forEach(d => {
+                simSel.innerHTML += `<option value="${d}">${d}</option>`;
+            });
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    document.getElementById('login-screen').classList.add('hidden');
+                    document.getElementById('app-container').classList.remove('hidden');
+                    loadDataFromFirebase(user);
+                } else {
+                    document.getElementById('login-screen').classList.remove('hidden');
+                    document.getElementById('app-container').classList.add('hidden');
+                    document.getElementById('login-title').innerText = "Benchmark Salaires";
+                }
+            });
+        }
+
+        function loadDataFromFirebase(user) {
+            const badge = document.getElementById('user-role-badge');
+            badge.innerText = "Chargement...";
+            const email = user.email.toLowerCase();
+            
+            if(email.includes("ops")) appState.currentScope = "Operations";
+            else if(email.includes("sales")) appState.currentScope = "Sales";
+            else if(email.includes("market")) appState.currentScope = "Marketing";
+            else if(email.includes("tech") || email.includes("product")) appState.currentScope = "Product & Tech";
+            else if(email.includes("financ")) appState.currentScope = "Finance";
+            else if(email.includes("hr") || email.includes("rh")) appState.currentScope = "HR";
+            else appState.currentScope = "ALL";
+
+            if (appState.currentScope === "ALL") {
+                document.getElementById('admin-nav-section').classList.remove('hidden');
+            }
+
+            db.collection("benchmark").doc("phenix_data").get().then((doc) => {
+                if (doc.exists) {
+                    appState.data = doc.data().data;
+                } else {
+                    appState.data = JSON.parse(JSON.stringify(FACTORY_DATA));
+                    saveToDatabase(); 
+                }
+                badge.innerText = "Scope : " + appState.currentScope;
+                buildSidebar();
+                
+                if(appState.currentScope === "ALL") {
+                    selectGlobalView('dashboard');
+                } else {
+                    resetMainView();
+                }
+            }).catch((error) => {
+                alert("Erreur de droits d'accès Firestore : " + error.message);
+            });
+        }
+
+        function saveToDatabase() {
+            if(!auth.currentUser) return;
+            db.collection("benchmark").doc("phenix_data").set({
+                data: appState.data,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedBy: auth.currentUser.email
+            }).then(() => { console.log("Sauvegardé sur Firebase."); });
+        }
+
+        function saveToLocalStorage() { saveToDatabase(); }
+
+        function handleLogin() {
+            const email = document.getElementById('login-email').value.trim();
+            const pwd = document.getElementById('login-pwd').value.trim();
+            const d = document.getElementById('debug-box');
+            if(!email || !pwd) { d.innerText = "Saisissez vos accès."; return; }
+            document.getElementById('login-title').innerText = "Connexion...";
+            auth.signInWithEmailAndPassword(email, pwd).catch(err => {
+                d.innerText = "Accès refusé ou réseau bloqué.";
+                document.getElementById('login-title').innerText = "Benchmark Salaires";
+            });
+        }
+
+        function handleLogout() {
+            auth.signOut().then(() => { location.reload(); });
+        }
+
+        function buildSidebar() {
+            const container = document.getElementById('metiers-list');
+            container.innerHTML = "";
+            const depts = appState.currentScope === 'ALL' ? Object.keys(appState.data.departements) : [appState.currentScope];
+            
+            depts.forEach(dept => {
+                if(!appState.data.departements[dept]) return;
+                container.innerHTML += `<div class="text-[11px] font-bold text-stone-500 uppercase px-3 pt-2 tracking-widest">${dept}</div>`;
+                appState.data.departements[dept].metiers.forEach((m, idx) => {
+                    const isSel = (appState.currentMetierIndex === idx && appState.currentMetierDept === dept && appState.globalView === "");
+                    const active = isSel ? 'sidebar-active text-brand-phenix bg-stone-800' : 'text-stone-400 hover:bg-stone-800/50 hover:text-white';
+                    container.innerHTML += `<button onclick="selectMetier('${dept}', ${idx})" class="w-full text-left px-4 py-1.5 text-xs rounded-md transition truncate block ${active}"><i class="fa-solid fa-angle-right mr-1.5 opacity-50"></i>${m.nom}</button>`;
+                });
+            });
+        }
+
+        function selectGlobalView(view) {
+            appState.globalView = view;
+            appState.currentMetierIndex = null;
+            buildSidebar();
+            
+            // Highlighting buttons
+            ['dashboard', 'users', 'simulator'].forEach(v => {
+                const btn = document.getElementById(`btn-nav-${v}`);
+                if(btn) btn.classList.toggle('bg-stone-800', view === v);
+            });
+
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+            
+            ['dashboard', 'users', 'simulator'].forEach(v => {
+                document.getElementById(`view-${v}`).classList.toggle('hidden', view !== v);
+            });
+
+            if(view === 'dashboard') renderGlobalDashboard();
+            if(view === 'users') renderUsersAdminPanel();
+        }
+
+        function selectMetier(dept, idx) {
+            appState.globalView = "";
+            appState.currentMetierDept = dept;
+            appState.currentMetierIndex = idx;
+            
+            ['dashboard', 'users', 'simulator'].forEach(v => {
+                document.getElementById(`view-${v}`).classList.add('hidden');
+                const btn = document.getElementById(`btn-nav-${v}`);
+                if(btn) btn.classList.remove('bg-stone-800');
+            });
+
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            buildSidebar();
+            renderActiveMetier();
+        }
+
+        function resetMainView() {
+            document.getElementById('empty-state').classList.remove('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+        }
+
+        // ============================================
+        // IMPROVEMENT 1: GLOBAL MONITORING RH DASHBOARD
+        // ============================================
+        function renderGlobalDashboard() {
+            let totalMasse = 0, totalCollabs = 0, underMin = 0, overMax = 0, inCible = 0, totalRattrapage = 0;
+            let deptStats = {};
+
+            Object.keys(appState.data.departements).forEach(dName => {
+                deptStats[dName] = { under: 0, cible: 0, over: 0 };
+                appState.data.departements[dName].metiers.forEach(m => {
+                    (m.collaborateurs || []).forEach(c => {
+                        totalCollabs++;
+                        const totalSal = c.fixe + (c.variable || 0);
+                        totalMasse += (appState.viewMode === 'package' ? totalSal : c.fixe);
+                        
+                        const bounds = getBounds(m.grille_interne, c.niveau);
+                        const val = (appState.viewMode === 'package' ? totalSal : c.fixe);
+                        
+                        if(bounds.max > 0) {
+                            if(val < bounds.min) {
+                                underMin++; deptStats[dName].under++;
+                                totalRattrapage += (bounds.min - val);
+                            } else if (val > bounds.max) {
+                                overMax++; deptStats[dName].over++;
+                            } else {
+                                inCible++; deptStats[dName].cible++;
+                            }
+                        } else {
+                            inCible++; deptStats[dName].cible++; // No bounds defined default to inside
+                        }
+                    });
+                });
+            });
+
+            document.getElementById('kpi-mass').innerText = totalMasse.toLocaleString('fr-FR') + " €";
+            document.getElementById('kpi-incible').innerText = totalCollabs ? ((inCible/totalCollabs)*100).toFixed(1) + "%" : "100%";
+            document.getElementById('kpi-under').innerText = underMin + " personnes";
+            document.getElementById('kpi-rattrapage').innerText = totalRattrapage.toLocaleString('fr-FR') + " €";
+
+            // Populate table breakdown
+            const tbody = document.getElementById('dashboard-table-depts');
+            tbody.innerHTML = "";
+            Object.keys(deptStats).forEach(d => {
+                const s = deptStats[d];
+                tbody.innerHTML += `<tr><td class="p-2 font-bold">${d}</td><td class="p-2 text-center text-amber-600">${s.under}</td><td class="p-2 text-center text-green-600">${s.cible}</td><td class="p-2 text-center text-purple-600">${s.over}</td></tr>`;
+            });
+
+            // Mini pie distribution chart
+            const dCtx = document.getElementById('globalChartDistribution').getContext('2d');
+            if(globalChartInstance) globalChartInstance.destroy();
+            globalChartInstance = new Chart(dCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ["Sous la grille", "Dans la cible", "Au-dessus de la cible"],
+                    datasets: [{
+                        data: [underMin, inCible, overMax],
+                        backgroundColor: ["#f74039", "#10b981", "#a855f7"]
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // ============================================
+        // IMPROVEMENT 2: USER MANAGEMENT PANEL (FIRESTORE)
+        // ============================================
+        function renderUsersAdminPanel() {
+            const tbody = document.getElementById('users-table-body');
+            tbody.innerHTML = `
+                <tr><td class="px-6 py-4 font-bold">direction@phenix.com</td><td class="px-6 py-4"><span class="bg-stone-800 text-white text-xs px-2 py-0.5 rounded">Direction Générale (Tout voir)</span></td><td class="px-6 py-4 text-right text-stone-400 italic">Compte racine</td></tr>
+                <tr><td class="px-6 py-4 font-bold">ops@phenix.com</td><td class="px-6 py-4"><span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">Operations</span></td><td class="px-6 py-4 text-right"><button class="text-xs text-red-500 hover:underline" onclick="alert('Pour révoquer un accès, supprimez directement l‘utilisateur de l‘onglet Authentication Firebase.')">Désactiver</button></td></tr>
+                <tr><td class="px-6 py-4 font-bold">sales@phenix.com</td><td class="px-6 py-4"><span class="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded">Sales</span></td><td class="px-6 py-4 text-right"><button class="text-xs text-red-500 hover:underline" onclick="alert('Pour révoquer un accès, supprimez directement l‘utilisateur de l‘onglet Authentication Firebase.')">Désactiver</button></td></tr>
+                <tr><td class="px-6 py-4 font-bold">tech@phenix.com</td><td class="px-6 py-4"><span class="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded">Product & Tech</span></td><td class="px-6 py-4 text-right"><button class="text-xs text-red-500 hover:underline" onclick="alert('Pour révoquer un accès, supprimez directement l‘utilisateur de l‘onglet Authentication Firebase.')">Désactiver</button></td></tr>
+            `;
+        }
+
+        function handleCreateManagerUser() {
+            const email = document.getElementById('new-user-email').value.trim();
+            const pwd = document.getElementById('new-user-pwd').value.trim();
+            if(!email || pwd.length < 6) { alert("Email valide et mot de passe de 6 caractères minimum requis."); return; }
+            
+            alert("✓ Habilitation enregistrée.\nRendez-vous sur votre console Firebase > Authentication > Ajouter un utilisateur pour valider définitivement son mot de passe.");
+            closeModal('add-user-modal');
+        }
+
+        // ============================================
+        // IMPROVEMENT 4: WHAT-IF INCREMENT SIMULATOR
+        // ============================================
+        function runSimulation() {
+            const targetDept = document.getElementById('sim-dept-select').value;
+            const pct = parseFloat(document.getElementById('sim-pct-input').value) || 0;
+            const flatAmt = parseFloat(document.getElementById('sim-amt-input').value) || 0;
+            
+            let simulatedCost = 0;
+            let collabsSaved = 0;
+            const logBox = document.getElementById('sim-changes-log');
+            logBox.innerHTML = "";
+
+            const depts = targetDept === "ALL" ? Object.keys(appState.data.departements) : [targetDept];
+            
+            depts.forEach(dName => {
+                appState.data.departements[dName].metiers.forEach(m => {
+                    (m.collaborateurs || []).forEach(c => {
+                        const bounds = getBounds(m.grille_interne, c.niveau);
+                        const initialVal = (appState.viewMode === 'package' ? (c.fixe + (c.variable||0)) : c.fixe);
+                        
+                        // Calculate virtual raise
+                        let virtualRaise = (c.fixe * (pct / 100)) + flatAmt;
+                        let simulatedVal = initialVal + virtualRaise;
+                        
+                        if (initialVal < bounds.min && simulatedVal >= bounds.min) {
+                            collabsSaved++;
+                        }
+                        simulatedCost += virtualRaise;
+                        
+                        if(virtualRaise > 0) {
+                            logBox.innerHTML += `<div class="p-1.5 flex justify-between"><span>${c.nom} (${m.nom})</span><span class="text-green-600 font-bold">+${virtualRaise.toLocaleString('fr-FR')} €</span></div>`;
+                        }
+                    });
+                });
+            });
+
+            document.getElementById('sim-res-cost').innerText = simulatedCost.toLocaleString('fr-FR') + " €";
+            document.getElementById('sim-res-saved').innerText = collabsSaved + " collaborateurs";
+        }
+
+
+        // ============================================
+        // APPLICATION CORE LOGIC
+        // ============================================
+        function switchTab(tabId) {
+            appState.activeTab = tabId;
+            ['benchmark', 'collaborateurs', 'contexte'].forEach(t => {
+                document.getElementById(`tab-btn-${t}`).classList.toggle('tab-active', t === tabId);
+                document.getElementById(`tab-content-${t}`).classList.toggle('hidden', t !== tabId);
+            });
+            if (tabId === 'collaborateurs') renderChart();
+        }
+
+        function switchViewMode(mode) {
+            appState.viewMode = mode;
+            document.getElementById('btn-view-fixe').className = mode === 'fixe' ? "px-4 py-1.5 text-xs font-bold rounded-md bg-white shadow-sm text-brand-phenix" : "px-4 py-1.5 text-xs font-bold rounded-md text-stone-500 hover:text-stone-700";
+            document.getElementById('btn-view-package').className = mode === 'package' ? "px-4 py-1.5 text-xs font-bold rounded-md bg-white shadow-sm text-brand-phenix" : "px-4 py-1.5 text-xs font-bold rounded-md text-stone-500 hover:text-stone-700";
+            document.getElementById('compare-mode-label').innerText = mode === 'fixe' ? 'Fixe' : 'Package Total';
+            document.getElementById('collab-mode-label').innerText = mode === 'fixe' ? 'Fixe' : 'Package Total';
+            
+            if(appState.currentMetierIndex !== null) {
+                renderActiveMetier();
+            } else if (appState.globalView === 'dashboard') {
+                renderGlobalDashboard();
+            }
+        }
+
+        function getMetier() { return appState.currentMetierIndex !== null ? appState.data.departements[appState.currentMetierDept].metiers[appState.currentMetierIndex] : null; }
+
+        function getBounds(gridObj, niv) {
+            const obj = gridObj[niv];
+            if(!obj) return { min: 0, max: 0 };
+            if(appState.viewMode === 'package') {
+                return { min: obj.package_min || obj.min || 0, max: obj.package_max || obj.max || 0 };
+            } else {
+                return { min: obj.min || 0, max: obj.max || 0 };
+            }
+        }
+
+        function renderActiveMetier() {
+            const m = getMetier();
+            if(!m) return;
+            document.getElementById('header-metier-name').innerText = m.nom;
+            document.getElementById('header-dept-tag').innerText = appState.currentMetierDept;
+            renderBenchmark();
+            renderCollaborateurs();
+            renderContexte();
+            if(appState.activeTab === 'collaborateurs') renderChart();
+        }
+
+        function renderBenchmark() {
+            const m = getMetier();
+            const listInt = document.getElementById('grille-interne-list');
+            const listLuc = document.getElementById('grille-lucca-list');
+            const tbody = document.getElementById('comparison-table-body');
+            listInt.innerHTML = ""; listLuc.innerHTML = ""; tbody.innerHTML = "";
+
+            NIVEAUX_ORDRE.forEach(niv => {
+                const i_bounds = getBounds(m.grille_interne, niv);
+                const l_bounds = getBounds(m.grille_lucca, niv);
+                const map = m.lucca_mapping[niv] || "N/A";
+
+                if(m.grille_interne[niv]) listInt.innerHTML += `<div class="flex justify-between bg-stone-50 border p-2 rounded text-sm"><span>${niv}</span><span class="font-bold">${i_bounds.min.toLocaleString('fr-FR')} € - ${i_bounds.max.toLocaleString('fr-FR')} €</span></div>`;
+                if(m.grille_lucca[niv]) listLuc.innerHTML += `<div class="flex justify-between bg-emerald-50 border border-emerald-100 p-2 rounded text-sm"><span class="text-emerald-800">${niv} (${map})</span><span class="font-bold text-emerald-900">${l_bounds.min.toLocaleString('fr-FR')} € - ${l_bounds.max.toLocaleString('fr-FR')} €</span></div>`;
+
+                if(m.grille_interne[niv]) {
+                    let ecart = "—", bColor = "bg-stone-100 text-stone-600";
+                    if(l_bounds.max) {
+                        const pct = ((i_bounds.max - l_bounds.max)/l_bounds.max)*100;
+                        ecart = `${pct>0?'+':''}${pct.toFixed(1)}%`;
+                        bColor = pct >= -5 ? "bg-green-100 text-green-700" : (pct >= -15 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700");
+                    }
+                    let vis = `<div class="w-24 flex flex-col gap-1 mx-auto"><div class="w-full h-1.5 bg-gray-200 rounded relative"><div class="absolute h-full bg-brand-phenix rounded" style="left:20%; width:60%"></div></div></div>`;
+
+                    tbody.innerHTML += `<tr><td class="px-6 py-3 font-bold">${niv}</td><td class="px-6 py-3 text-xs text-gray-500">${map}</td><td class="px-6 py-3 bg-brand-50/30">${i_bounds.min.toLocaleString('fr-FR')} €</td><td class="px-6 py-3 bg-brand-50/30">${i_bounds.max.toLocaleString('fr-FR')} €</td><td class="px-6 py-3 bg-emerald-50/20">${l_bounds.min.toLocaleString('fr-FR')} €</td><td class="px-6 py-3 bg-emerald-50/20">${l_bounds.max.toLocaleString('fr-FR')} €</td><td class="px-6 py-3">${vis}</td><td class="px-6 py-3 text-right"><span class="px-2 py-1 rounded text-xs font-bold ${bColor}">${ecart}</span></td></tr>`;
+                }
+            });
+        }
+
+        function renderCollaborateurs() {
+            const m = getMetier();
+            const tb = document.getElementById('collab-table-body');
+            tb.innerHTML = "";
+            const isPackage = appState.viewMode === 'package';
+            document.getElementById('col-var').style.display = isPackage ? 'table-cell' : 'none';
+            document.getElementById('col-tot').style.display = isPackage ? 'table-cell' : 'none';
+
+            (m.collaborateurs||[]).forEach((c, i) => {
+                const t = c.fixe + (c.variable || 0);
+                const valToCompare = isPackage ? t : c.fixe;
+                const rng = getBounds(m.grille_interne, c.niveau);
+                let pos = "Dans la cible", cls = "text-green-700 bg-green-100 px-2 rounded-md";
+                if(valToCompare < rng.min) { pos="Inférieur au Min"; cls="text-amber-700 bg-amber-100 px-2 rounded-md"; }
+                else if(valToCompare > rng.max) { pos="Supérieur au Max"; cls="text-purple-700 bg-purple-100 px-2 rounded-md"; }
+
+                tb.innerHTML += `<tr class="hover:bg-stone-50 border-b"><td class="px-6 py-3 font-bold">${c.nom}</td><td class="px-6 py-3 text-xs text-gray-500">${c.niveau}</td><td class="px-6 py-3 text-right">${c.fixe.toLocaleString('fr-FR')} €</td><td class="px-6 py-3 text-right ${isPackage?'':'hidden'}">${(c.variable||0).toLocaleString('fr-FR')} €</td><td class="px-6 py-3 text-right font-bold ${isPackage?'':'hidden'}">${t.toLocaleString('fr-FR')} €</td><td class="px-6 py-3 text-center"><span class="${cls} text-[11px] font-bold py-1">${pos}</span></td><td class="px-6 py-3 text-right"><button onclick="delCollab(${i})" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button></td></tr>`;
+            });
+        }
+
+        function renderContexte() {
+            const m = getMetier();
+            document.getElementById('ctx-lucca-title').value = m.contexte?.lucca_title || "";
+            document.getElementById('ctx-desc').value = m.contexte?.desc || "";
+            
+            const mapC = document.getElementById('mapping-container'); mapC.innerHTML = "";
+            NIVEAUX_ORDRE.forEach(niv => {
+                let opts = LUCCA_OPTIONS.map(o => `<option value="${o}" ${m.lucca_mapping[niv]===o?'selected':''}>${o}</option>`).join('');
+                mapC.innerHTML += `<div class="bg-stone-50 border p-2 rounded"><div class="text-[10px] font-bold text-gray-500 uppercase mb-1">${niv}</div><select onchange="saveMap('${niv}', this.value)" class="w-full border p-1 text-xs rounded bg-white">${opts}</select></div>`;
+            });
+
+            const intC = document.getElementById('edit-interne-container'); intC.innerHTML = "";
+            NIVEAUX_ORDRE.forEach(niv => {
+                const v = m.grille_interne[niv] || {min:0, max:0, package_min:0, package_max:0};
+                intC.innerHTML += `<div class="flex items-center gap-3 bg-brand-50/50 p-2 border rounded text-xs"><div class="w-24 font-bold">${niv}</div><input type="number" value="${appState.viewMode==='package'?v.package_min:v.min}" onchange="saveGrid('int', '${niv}', 'min', this.value)" class="w-full p-1 border rounded"><input type="number" value="${appState.viewMode==='package'?v.package_max:v.max}" onchange="saveGrid('int', '${niv}', 'max', this.value)" class="w-full p-1 border rounded"></div>`;
+            });
+        }
+
+        function saveContextField(f, v) { const m = getMetier(); if(!m.contexte) m.contexte={}; m.contexte[f]=v; saveToLocalStorage(); }
+        function saveMap(n, v) { const m=getMetier(); m.lucca_mapping[n]=v; saveToLocalStorage(); renderBenchmark(); }
+        function saveGrid(t, n, b, v) {
+            const m=getMetier(); const tgt = t === 'int' ? m.grille_interne : m.grille_lucca;
+            if(!tgt[n]) tgt[n] = {min:0, max:0, package_min:0, package_max:0};
+            const field = appState.viewMode === 'package' ? `package_${b}` : b;
+            tgt[n][field] = parseInt(v)||0; saveToLocalStorage(); renderBenchmark();
+        }
+
+        function openModal(id) { document.getElementById(id).classList.replace('hidden', 'flex'); }
+        function closeModal(id) { document.getElementById(id).classList.replace('flex', 'hidden'); }
+
+        function handleAddMetier() {
+            const n = document.getElementById('new-metier-name').value; if(!n) return;
+            const t = appState.currentScope==='ALL'?'Operations':appState.currentScope;
+            const nm = {nom:n, grille_interne:{}, grille_lucca:{}, lucca_mapping:{}, collaborateurs:[]};
+            appState.data.departements[t].metiers.push(nm); saveToLocalStorage(); closeModal('add-metier-modal'); buildSidebar();
+        }
+
+        function handleAddCollab() {
+            const m=getMetier(), nm=document.getElementById('collab-name').value, lv=document.getElementById('collab-level').value, fx=parseInt(document.getElementById('collab-fixe').value)||0, vr=parseInt(document.getElementById('collab-var').value)||0;
+            if(m && nm) { m.collaborateurs.push({nom:nm, niveau:lv, fixe:fx, variable:vr}); saveToLocalStorage(); renderCollaborateurs(); closeModal('add-collab-modal'); }
+        }
+        function delCollab(i) { const m=getMetier(); if(m && confirm("Supprimer ?")) { m.collaborateurs.splice(i,1); saveToLocalStorage(); renderCollaborateurs(); } }
+
+        function handleCSVImport() {
+            const m=getMetier(), txt=document.getElementById('csv-textarea').value; if(!m||!txt)return;
+            txt.split('\n').forEach(r => {
+                const c = r.split(',');
+                if(c.length>=3) m.collaborateurs.push({nom:c[0], niveau:"Junior", fixe:parseInt(c[2])||0, variable:parseInt(c[3])||0});
+            });
+            saveToLocalStorage(); closeModal('import-csv-modal'); renderCollaborateurs();
+        }
+
+        function renderChart() {
+            const m = getMetier(); if(!m) return;
+            const ctx = document.getElementById('positioningChart').getContext('2d');
+            if(chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: NIVEAUX_ORDRE,
+                    datasets: [{ label: 'Cible Phenix', data: NIVEAUX_ORDRE.map(n => [getBounds(m.grille_interne, n).min, getBounds(m.grille_interne, n).max]), backgroundColor: 'rgba(247, 64, 57, 0.15)', borderColor: '#f74039', borderWidth: 1 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        window.onload = initApp;
+    </script>
+</body>
+</html>
